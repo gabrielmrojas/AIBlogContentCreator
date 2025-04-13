@@ -1,0 +1,14 @@
+chromadb==0.6.3
+fitz==0.0.1.dev2
+fpdf==1.7.2
+langchain==0.3.23
+langchain_chroma==0.2.2
+langchain_ollama==0.3.1
+langchain_openai==0.3.12
+langchain_text_splitters==0.3.8
+Markdown==3.8
+ollama==0.4.7
+openai==1.73.0
+python-dotenv==1.1.0
+reportlab==3.6.13
+streamlit==1.44.1

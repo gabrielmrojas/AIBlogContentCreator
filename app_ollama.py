@@ -1,12 +1,10 @@
 import os
 import tempfile
-import argparse
 from typing import List, Dict, Any
 import streamlit as st
 import chromadb
 import ollama
 import fitz  # PyMuPDF
-import markdown
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings

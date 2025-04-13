@@ -9,7 +9,6 @@ from langchain_openai import OpenAIEmbeddings
 import uuid
 import openai
 from dotenv import load_dotenv
-from fpdf import FPDF
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import slide
 
