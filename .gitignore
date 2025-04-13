@@ -8,6 +8,7 @@ __pycache__/
 # Virtual environment
 venv/
 env/
+chroma_db/
 
 # IDEs
 .idea/
