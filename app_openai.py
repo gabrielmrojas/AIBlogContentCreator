@@ -4,6 +4,7 @@ import streamlit as st
 import os
 import time
 import chromadb
+from fpdf import FPDF
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 import uuid
@@ -189,69 +190,93 @@ class AIBlogCreator:
             return f"An error occurred while generating the presentation: {str(e)}"
 
 
-def create_pdf_from_markdown(markdown_content, title):
-    """Convert markdown content to PDF with Unicode support"""
-    try:
-        # Try using FPDF2 which has better Unicode support
-        from fpdf import FPDF
+def create_pdf_from_markdown(content, title):
+    """Generate a PDF document from markdown content"""
+    # Create a PDF document
+    pdf = FPDF()
+    pdf.add_page()
 
+    # Use Helvetica instead of Arial
+    pdf.set_font("Helvetica", size=12)
+
+    # Add title
+    pdf.set_font("Helvetica", style="B", size=16)
+    # Set a specific width less than the page width
+    page_width = pdf.w - 20  # Leave some margin
+    pdf.cell(page_width, 10, text=title, new_x="LMARGIN", new_y="NEXT", align='C')
+    pdf.ln(10)
+
+    # Reset font
+    pdf.set_font("Helvetica", size=12)
+
+    # Process content by lines
+    for line in content.split('\n'):
+        line = line.strip()
+        if not line:
+            pdf.ln(5)
+            continue
+
+        # Handle headers
+        if line.startswith('## '):
+            pdf.set_font("Helvetica", style="B", size=14)
+            pdf.cell(page_width, 10, text=line[2:], new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=12)
+        elif line.startswith('### '):
+            pdf.set_font("Helvetica", style="B", size=12)
+            pdf.cell(page_width, 10, text=line[3:], new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=12)
+        # Handle normal text
+        else:
+            # Ensure text is Latin-1 encoded or replace problematic chars
+            try:
+                safe_line = line.encode('latin-1', errors='replace').decode('latin-1')
+                # Use width parameter for multi_cell to ensure text fits
+                pdf.multi_cell(page_width, 5, text=safe_line)
+            except Exception as e:
+                # Skip problematic lines instead of failing
+                pdf.multi_cell(page_width, 5, text=f"[Content omitted due to encoding issue]")
+
+    # Return the PDF as bytes
+    try:
+        return pdf.output()
+    except Exception as e:
+        # Fallback to simpler content if needed
         pdf = FPDF()
         pdf.add_page()
+        pdf.set_font("Helvetica", size=12)
+        pdf.cell(0, 10, text="Error creating formatted PDF. Please try a different format.")
+        return pdf.output()
 
-        # Set font
-        pdf.set_font("Arial", size=12)
 
-        # Add title
-        pdf.set_font("Arial", style="B", size=16)
-        pdf.cell(200, 10, txt=title, ln=True, align='C')
+def create_simple_pdf(title, content):
+    """Create a simple PDF with title and content"""
+    pdf = FPDF()
+    pdf.add_page()
+
+    # Set font
+    pdf.set_font("Helvetica", size=12)
+
+    # Calculate safe width
+    page_width = pdf.w - 20  # Leave margins
+
+    # Ensure title and content are Latin-1 compatible
+    try:
+        safe_title = title.encode('latin-1', errors='replace').decode('latin-1')
+        safe_content = content.encode('latin-1', errors='replace').decode('latin-1')
+
+        # Add title and content
+        pdf.cell(page_width, 10, text=safe_title, new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(10)
 
-        # Reset font for body text
-        pdf.set_font("Arial", size=12)
-
-        # Simple markdown to PDF conversion
-        lines = markdown_content.split("\n")
-        for line in lines:
-            # Clean the line of problematic characters
-            line = line.encode('ascii', 'replace').decode('ascii')
-
-            # Handle headings
-            if line.startswith("# "):
-                pdf.set_font("Arial", style="B", size=14)
-                pdf.cell(0, 10, txt=line[2:], ln=True)
-                pdf.set_font("Arial", size=12)
-            elif line.startswith("## "):
-                pdf.set_font("Arial", style="B", size=12)
-                pdf.cell(0, 10, txt=line[3:], ln=True)
-                pdf.set_font("Arial", size=12)
-            elif line.strip() == "":
-                pdf.ln(5)
-            else:
-                # Handle normal text with multi-cell for wrapping
-                pdf.multi_cell(0, 5, txt=line)
-
-        # Save PDF to a bytes buffer
-        pdf_bytes = pdf.output(dest='S').encode('latin-1', errors='replace')
-        return pdf_bytes
-
+        # Add content with proper width
+        pdf.multi_cell(page_width, 5, text=safe_content)
     except Exception as e:
-        # Fallback to a simpler approach
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
+        # Fallback to very simple content
+        pdf.cell(page_width, 10, text="PDF Content Error", new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(page_width, 5, text=f"Error creating PDF: {str(e)}")
 
-        # Add safe title
-        safe_title = title.encode('ascii', 'replace').decode('ascii')
-        pdf.cell(200, 10, txt=safe_title, ln=True, align='C')
-
-        # Add safe content
-        safe_content = "The original content contains special characters that couldn't be encoded.\n\n"
-        safe_content += markdown_content.encode('ascii', 'replace').decode('ascii')
-        pdf.multi_cell(0, 5, txt=safe_content)
-
-        pdf_bytes = pdf.output(dest='S').encode('latin-1')
-        return pdf_bytes
-
+    # Return PDF as bytes
+    return pdf.output()
 
 def main():
     st.title("AI Blog Creator")
@@ -408,6 +433,10 @@ def main():
                 try:
                     pdf_bytes = create_pdf_from_markdown(blog_content, blog_topic)
 
+                    # Convert bytearray to bytes if needed
+                    if isinstance(pdf_bytes, bytearray):
+                        pdf_bytes = bytes(pdf_bytes)
+
                     st.download_button(
                         label="Download as PDF",
                         data=pdf_bytes,
@@ -416,7 +445,6 @@ def main():
                     )
                 except Exception as e:
                     st.error(f"Error creating PDF: {str(e)}")
-                    st.info("Please install FPDF with 'pip install fpdf' to enable PDF export")
 
             # Create a presentation PDF
             st.markdown("### Presentation Slides")
@@ -441,19 +469,27 @@ def main():
                     st.markdown("*Formatting this content into presentation slides...*")
 
                     # Create the PDF
-                    presentation_bytes = slide.create_presentation_pdf(blog_topic, slide_content)
+                    try:
+                        presentation_bytes = slide.create_presentation_pdf(blog_topic, slide_content)
 
-                    # Final update
-                    progress_placeholder.success("Step 3/3: PDF creation complete!")
+                        # Convert bytearray to bytes if needed
+                        if isinstance(presentation_bytes, bytearray):
+                            presentation_bytes = bytes(presentation_bytes)
 
-                # Show the download button outside the expander
-                st.success("Presentation created successfully!")
-                st.download_button(
-                    label="Download Presentation PDF",
-                    data=presentation_bytes,
-                    file_name=f"{blog_topic.replace(' ', '_')}_presentation.pdf",
-                    mime="application/pdf"
-                )
+                        # Final update
+                        progress_placeholder.success("Step 3/3: PDF creation complete!")
+
+                        # Show the download button outside the expander
+                        st.success("Presentation created successfully!")
+                        st.download_button(
+                            label="Download Presentation PDF",
+                            data=presentation_bytes,
+                            file_name=f"{blog_topic.replace(' ', '_')}_presentation.pdf",
+                            mime="application/pdf"
+                        )
+                    except Exception as e:
+                        progress_placeholder.error(f"Error in PDF creation: {str(e)}")
+                        st.error(f"Could not create presentation PDF: {str(e)}")
 
                 # Add a preview note
                 with st.expander("About this presentation", expanded=False):

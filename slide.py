@@ -1,40 +1,55 @@
-# slide.py
-from reportlab.lib.pagesizes import landscape, A4
-from reportlab.pdfgen import canvas
-import re
-import io
+from fpdf import FPDF
+from datetime import date
 
 
 def create_presentation_pdf(blog_title, blog_content):
     """Create a PDF presentation from structured slide content"""
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=landscape(A4))
-    width, height = landscape(A4)
+    # Create landscape PDF
+    pdf = FPDF(orientation='L', format='A4')
+    pdf.set_auto_page_break(auto=False)
 
-    # Parse the structured content to extract slides
+    # Normalize text to be Latin-1 compatible
+    blog_title = normalize_text(blog_title)
+    blog_content = normalize_text(blog_content)
+
+    # Parse the slide content
     sections = parse_slide_content(blog_content)
 
     # Create title slide
-    create_title_slide(c, blog_title, width, height)
-    c.showPage()
+    create_title_slide(pdf, blog_title)
 
     # Create content slides (limit to 7 slides)
     for i, section in enumerate(sections[:7]):
-        create_content_slide(c, section, width, height, i + 1)
-        c.showPage()
+        create_content_slide(pdf, section, i + 1)
 
     # Create ending slide
-    create_ending_slide(c, blog_title, width, height)
-    c.showPage()
+    create_ending_slide(pdf, blog_title)
 
-    c.save()
-    return buffer.getvalue()
+    # Get PDF as bytes
+    output = pdf.output()
+
+    # Ensure we return bytes, not bytearray
+    if isinstance(output, bytearray):
+        return bytes(output)
+    return output
+
+
+def normalize_text(text):
+    """Replace non-Latin-1 characters with their Latin-1 equivalents"""
+    # Replace smart quotes with straight quotes
+    text = text.replace(''', "'").replace(''', "'").replace('"', '"').replace('"', '"')
+    # Replace bullet points with hyphens
+    text = text.replace('•', '-').replace('●', '-').replace('·', '-')
+    # Replace em/en dashes with hyphens
+    text = text.replace('—', '-').replace('–', '-')
+    # Replace ellipsis with three dots
+    text = text.replace('…', '...')
+    return text
 
 
 def parse_slide_content(content):
     """Parse pre-formatted slide content with defined sections and bullets"""
     sections = []
-    current_section = None
 
     # Split the content by slide markers
     slide_blocks = content.split("**Slide ")
@@ -63,144 +78,129 @@ def parse_slide_content(content):
                 # Clean the bullet point
                 point = line[1:].strip()
                 if point:
-                    bullet_points.append(point.replace("*", ""))
+                    bullet_points.append(normalize_text(point.replace("*", "")))
 
         # Create section if we have title and bullets
         if title and bullet_points:
             sections.append({
-                "title": title,
+                "title": normalize_text(title),
                 "bullet_points": bullet_points,
-                "content": []  # Keep this for compatibility
             })
 
     return sections
 
 
-def create_content_slide(c, section, width, height, slide_number):
-    """Create a content slide with title, bullets, and image description"""
-    # Background
-    c.setFillColorRGB(1, 1, 1)  # White
-    c.rect(0, 0, width, height, fill=True)
+def create_title_slide(pdf, title):
+    """Create the title slide"""
+    pdf.add_page()
 
-    # Header background
-    c.setFillColorRGB(0.2, 0.3, 0.7)  # Blue
-    c.rect(0, height - 80, width, 80, fill=True)
+    # Set background color (light blue-gray)
+    pdf.set_fill_color(230, 230, 242)
+    pdf.rect(0, 0, pdf.w, pdf.h, style='F')
 
     # Title
-    c.setFillColorRGB(1, 1, 1)  # White text on blue background
-    c.setFont("Helvetica-Bold", 24)
+    pdf.set_text_color(51, 51, 128)  # Dark blue
+    pdf.set_font('Arial', 'B', 36)
+
+    # Center the title
+    pdf.set_y(pdf.h / 2 - 30)
+    pdf.cell(0, 20, title, 0, 1, 'C')
+
+    # Subtitle
+    pdf.set_font('Arial', '', 24)
+    pdf.cell(0, 20, "Blog Summary Presentation", 0, 1, 'C')
+
+    # Footer
+    pdf.set_font('Arial', '', 12)
+    pdf.set_y(pdf.h - 20)
+    pdf.cell(90, 10, "AI Blog Content Creator", 0, 0, 'L')
+
+    # Date
+    today = date.today().strftime("%B %d, %Y")
+    pdf.cell(0, 10, today, 0, 0, 'R')
+
+
+def create_content_slide(pdf, section, slide_number):
+    """Create a content slide with title and bullets"""
+    pdf.add_page()
+
+    # Set background color (white)
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(0, 0, pdf.w, pdf.h, style='F')
+
+    # Header background (blue)
+    pdf.set_fill_color(51, 77, 179)
+    pdf.rect(0, 0, pdf.w, 40, style='F')
+
+    # Title
+    pdf.set_text_color(255, 255, 255)  # White text
+    pdf.set_font('Arial', 'B', 24)
+
     title = section["title"]
     if len(title) > 50:
         title = title[:47] + "..."
-    c.drawString(40, height - 50, title)
+
+    pdf.set_xy(20, 15)
+    pdf.cell(0, 10, title, 0, 1)
 
     # Bullet points
-    y_position = height - 120
-    c.setFillColorRGB(0, 0, 0)  # Black
-    c.setFont("Helvetica", 18)
+    pdf.set_text_color(0, 0, 0)  # Black text
+    pdf.set_font('Arial', '', 18)
+    pdf.set_y(60)
 
     for bullet in section["bullet_points"]:
-        # Handle long bullet points with line wrapping
-        bullet_text = f"• {bullet}"
+        pdf.set_x(30)
 
-        # Line wrapping for long bullets
-        max_width = width - 100
-        words = bullet_text.split()
-        lines = []
-        current_line = []
+        # Format bullet point with a latin-1 compatible bullet
+        bullet_text = f"- {bullet}"  # Using hyphen instead of bullet point
 
-        for word in words:
-            test_line = ' '.join(current_line + [word])
-            if c.stringWidth(test_line, "Helvetica", 18) <= max_width:
-                current_line.append(word)
-            else:
-                if current_line:
-                    lines.append(' '.join(current_line))
-                    current_line = [word]
-                else:
-                    # Word is too long by itself, just add it
-                    lines.append(word)
-                    current_line = []
+        # Use multi_cell for automatic line wrapping
+        pdf.multi_cell(0, 12, bullet_text)
+        pdf.ln(8)  # Add space between bullet points
 
-        if current_line:
-            lines.append(' '.join(current_line))
-
-        # Draw the wrapped bullet point lines
-        for line in lines:
-            if y_position < 100:  # Avoid drawing below a certain point
-                break
-            c.drawString(60, y_position, line)
-            y_position -= 30
-
-        y_position -= 20  # Add spacing between bullet points
+        # Break if we're running out of space
+        if pdf.get_y() > pdf.h - 50:
+            break
 
     # Footer with slide number
-    c.setFillColorRGB(0.2, 0.3, 0.7)  # Blue
-    c.rect(0, 0, width, 30, fill=True)
-    c.setFillColorRGB(1, 1, 1)  # White
-    c.setFont("Helvetica", 12)
-    c.drawString(30, 10, "AI Blog Content Creator")
-    c.drawString(width - 70, 10, f"Slide {slide_number}")
+    pdf.set_fill_color(51, 77, 179)  # Blue
+    pdf.rect(0, pdf.h - 20, pdf.w, 20, style='F')
 
-def create_title_slide(c, title, width, height):
-    """Create the title slide"""
-    # Background
-    c.setFillColorRGB(0.9, 0.9, 0.95)  # Light blue-gray
-    c.rect(0, 0, width, height, fill=True)
-
-    # Title
-    c.setFillColorRGB(0.2, 0.2, 0.5)  # Dark blue
-    c.setFont("Helvetica-Bold", 36)
-
-    # Center the title text
-    title_width = c.stringWidth(title, "Helvetica-Bold", 36)
-    title_x = (width - title_width) / 2
-    c.drawString(title_x, height/2 + 30, title)
-
-    # Subtitle
-    c.setFont("Helvetica", 24)  # Using standard Helvetica
-    subtitle = "Blog Summary Presentation"
-    subtitle_width = c.stringWidth(subtitle, "Helvetica", 24)
-    c.drawString((width - subtitle_width) / 2, height/2 - 30, subtitle)
-
-    # Footer
-    c.setFont("Helvetica", 12)
-    c.drawString(30, 30, "AI Blog Content Creator")
-
-    # Date
-    from datetime import date
-    today = date.today().strftime("%B %d, %Y")
-    date_width = c.stringWidth(today, "Helvetica", 12)
-    c.drawString(width - date_width - 30, 30, today)
+    pdf.set_text_color(255, 255, 255)  # White
+    pdf.set_font('Arial', '', 12)
+    pdf.set_xy(20, pdf.h - 15)
+    pdf.cell(90, 10, "AI Blog Content Creator", 0, 0)
+    pdf.cell(0, 10, f"Slide {slide_number}", 0, 0, 'R')
 
 
-def create_ending_slide(c, title, width, height):
+def create_ending_slide(pdf, title):
     """Create a summary/ending slide"""
-    # Background
-    c.setFillColorRGB(0.9, 0.9, 0.95)  # Light blue-gray
-    c.rect(0, 0, width, height, fill=True)
+    pdf.add_page()
+
+    # Set background color (light blue-gray)
+    pdf.set_fill_color(230, 230, 242)  # Light blue-gray
+    pdf.rect(0, 0, pdf.w, pdf.h, style='F')
 
     # Title
-    c.setFillColorRGB(0.2, 0.2, 0.5)  # Dark blue
-    c.setFont("Helvetica-Bold", 30)
-    end_title = "Thank You!"
-    title_width = c.stringWidth(end_title, "Helvetica-Bold", 30)
-    c.drawString((width - title_width) / 2, height/2 + 40, end_title)
+    pdf.set_text_color(51, 51, 128)  # Dark blue
+    pdf.set_font('Arial', 'B', 30)
+
+    # Thank you text
+    pdf.set_y(pdf.h / 2 - 30)
+    pdf.cell(0, 20, "Thank You!", 0, 1, 'C')
 
     # Blog title reminder
-    c.setFont("Helvetica", 20)
+    pdf.set_font('Arial', '', 20)
     reminder = f"Summary of: {title}"
     if len(reminder) > 60:
         reminder = reminder[:57] + "..."
-    reminder_width = c.stringWidth(reminder, "Helvetica", 20)
-    c.drawString((width - reminder_width) / 2, height/2 - 20, reminder)
+    pdf.cell(0, 20, reminder, 0, 1, 'C')
 
     # Footer
-    c.setFont("Helvetica", 12)
-    c.drawString(30, 30, "AI Blog Content Creator")
+    pdf.set_font('Arial', '', 12)
+    pdf.set_y(pdf.h - 20)
+    pdf.cell(90, 10, "AI Blog Content Creator", 0, 0, 'L')
 
     # Date
-    from datetime import date
     today = date.today().strftime("%B %d, %Y")
-    date_width = c.stringWidth(today, "Helvetica", 12)
-    c.drawString(width - date_width - 30, 30, today)
+    pdf.cell(0, 10, today, 0, 0, 'R')

@@ -136,16 +136,15 @@ class AIBlogCreator:
 
         return response['message']['content']
 
-
     def generate_presentation_content(self, content: str) -> str:
-
+        """Generate presentation slide content from blog content"""
         # Generate blog with Ollama
         system_prompt = (
             "You are an expert at summarizing content for presentations. "
             "Your task is to review the blog content and create a slide presentation summary. "
             "Break the content into 5-7 slide sections. Each slide should have:"
             "- A slide title (in bold with format: **Slide N: Title**)"
-            "- 3 bullet points summarizing the key information (with format: *Bullet point text)"
+            "- 3 bullet points summarizing the key information (with format: * Bullet point text)"
             "The bullet points should be concise but informative."
         )
 
@@ -160,6 +159,74 @@ class AIBlogCreator:
         )
 
         return response['message']['content']
+
+
+def create_pdf_from_markdown(content, title):
+    """Generate a PDF document from markdown content using FPDF2"""
+    try:
+        from fpdf import FPDF
+
+        # Create a PDF document
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Use Helvetica (built-in font)
+        pdf.set_font("Helvetica", size=12)
+
+        # Add title
+        pdf.set_font("Helvetica", style="B", size=16)
+        # Set a specific width less than the page width
+        page_width = pdf.w - 20  # Leave some margin
+        pdf.cell(page_width, 10, text=title, new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(10)
+
+        # Reset font
+        pdf.set_font("Helvetica", size=12)
+
+        # Process content by lines
+        for line in content.split('\n'):
+            line = line.strip()
+            if not line:
+                pdf.ln(5)
+                continue
+
+            # Handle headers
+            if line.startswith('## '):
+                pdf.set_font("Helvetica", style="B", size=14)
+                pdf.cell(page_width, 10, text=line[2:], new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", size=12)
+            elif line.startswith('### '):
+                pdf.set_font("Helvetica", style="B", size=12)
+                pdf.cell(page_width, 10, text=line[3:], new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", size=12)
+            # Handle normal text
+            else:
+                # Ensure text is Latin-1 encoded or replace problematic chars
+                try:
+                    safe_line = line.encode('latin-1', errors='replace').decode('latin-1')
+                    # Use width parameter for multi_cell to ensure text fits
+                    pdf.multi_cell(page_width, 5, text=safe_line)
+                except Exception:
+                    # Skip problematic lines instead of failing
+                    pdf.multi_cell(page_width, 5, text="[Content omitted due to encoding issue]")
+
+        # Return the PDF as bytes
+        output = pdf.output()
+        # Ensure we return bytes, not bytearray
+        if isinstance(output, bytearray):
+            return bytes(output)
+        return output
+    except Exception as e:
+        # Fallback to simpler content if needed
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", size=12)
+        pdf.cell(0, 10, text="Error creating formatted PDF. Please try a different format.")
+        output = pdf.output()
+        # Ensure we return bytes, not bytearray
+        if isinstance(output, bytearray):
+            return bytes(output)
+        return output
 
 
 def main():
@@ -202,7 +269,7 @@ def main():
             st.success(f"Model updated to {selected_model}")
 
         MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
-        uploaded_file = st.file_uploader("Limit 200MB per file • PDF", type="pdf")
+        uploaded_file = st.file_uploader("Limit 5MB per file • PDF", type="pdf")
 
         if uploaded_file is not None:
             # Check file size
@@ -236,6 +303,10 @@ def main():
                     word_count=word_count
                 )
 
+                # Store in session state for use in other sections
+                st.session_state.blog_topic = blog_topic
+                st.session_state.blog_content = blog_content
+
                 # Display the blog content
                 st.markdown("## Generated Blog")
                 st.markdown(blog_content)
@@ -255,50 +326,12 @@ def main():
                 # PDF download button
                 with col2:
                     try:
-                        from fpdf import FPDF
-                        import tempfile
-
-                        # Create a PDF file
-                        def create_pdf_from_markdown(markdown_content, title):
-                            pdf = FPDF()
-                            pdf.add_page()
-
-                            # Set font
-                            pdf.set_font("Arial", size=12)
-
-                            # Add title
-                            pdf.set_font("Arial", style="B", size=16)
-                            pdf.cell(200, 10, txt=title, ln=True, align='C')
-                            pdf.ln(10)
-
-                            # Reset font for body text
-                            pdf.set_font("Arial", size=12)
-
-                            # Simple markdown to PDF conversion
-                            # Split content by lines
-                            lines = markdown_content.split("\n")
-                            for line in lines:
-                                # Handle headings (crude implementation)
-                                if line.startswith("# "):
-                                    pdf.set_font("Arial", style="B", size=14)
-                                    pdf.cell(0, 10, txt=line[2:], ln=True)
-                                    pdf.set_font("Arial", size=12)
-                                elif line.startswith("## "):
-                                    pdf.set_font("Arial", style="B", size=12)
-                                    pdf.cell(0, 10, txt=line[3:], ln=True)
-                                    pdf.set_font("Arial", size=12)
-                                elif line.strip() == "":
-                                    pdf.ln(5)
-                                else:
-                                    # Handle normal text with multi-cell for wrapping
-                                    pdf.multi_cell(0, 5, txt=line)
-
-                            # Save PDF to a bytes buffer
-                            pdf_bytes = pdf.output(dest='S').encode('latin-1')
-                            return pdf_bytes
-
                         # Create PDF content
                         pdf_bytes = create_pdf_from_markdown(blog_content, blog_topic)
+
+                        # Convert bytearray to bytes if needed
+                        if isinstance(pdf_bytes, bytearray):
+                            pdf_bytes = bytes(pdf_bytes)
 
                         # Create download button for PDF
                         st.download_button(
@@ -307,12 +340,9 @@ def main():
                             file_name=f"{blog_topic.replace(' ', '_')}.pdf",
                             mime="application/pdf"
                         )
-
                     except Exception as e:
                         st.error(f"Error creating PDF: {str(e)}")
-                        st.info("Please install FPDF with 'pip install fpdf' to enable PDF export")
-
-                # In the tab2 section of the app_ollama.py, modify the presentation slide section:
+                        st.info("Please install FPDF with 'pip install fpdf2' to enable PDF export")
 
                 # Create a presentation PDF
                 st.markdown("### Presentation Slides")
@@ -320,33 +350,48 @@ def main():
 
                 # Create and offer the presentation for download
                 try:
-                    # Show a spinner while generating the slide content
-                    with st.spinner("Generating presentation content..."):
+                    # Create an expander to show the progress and content
+                    with st.expander("Presentation Generation Progress", expanded=True):
+                        progress_placeholder = st.empty()
+                        progress_placeholder.info("Step 1/3: Analyzing blog content...")
+
+                        # Generate the slide content
                         slide_content = st.session_state.blog_creator.generate_presentation_content(blog_content)
 
-                    # Show the slide content in an expander
-                    with st.expander("Preview Slide Content", expanded=False):
+                        # Update progress
+                        progress_placeholder.info("Step 2/3: Formatting slides...")
+
+                        # Preview section
+                        st.subheader("Slide Content Preview")
                         st.markdown(slide_content)
                         st.markdown("---")
-                        st.markdown("*This content will be formatted into slides in the PDF*")
+                        st.markdown("*Formatting this content into presentation slides...*")
 
-                    # Show a spinner while creating the PDF
-                    with st.spinner("Creating PDF presentation..."):
-                        presentation_bytes = slide.create_presentation_pdf(blog_topic, slide_content)
+                        # Create the PDF
+                        try:
+                            presentation_bytes = slide.create_presentation_pdf(blog_topic, slide_content)
 
-                    # Success message
-                    st.success("Presentation created successfully!")
+                            # Convert bytearray to bytes if needed
+                            if isinstance(presentation_bytes, bytearray):
+                                presentation_bytes = bytes(presentation_bytes)
 
-                    # Add download button for the presentation
-                    st.download_button(
-                        label="Download Presentation PDF",
-                        data=presentation_bytes,
-                        file_name=f"{blog_topic.replace(' ', '_')}_presentation.pdf",
-                        mime="application/pdf"
-                    )
+                            # Final update
+                            progress_placeholder.success("Step 3/3: PDF creation complete!")
+
+                            # Show the download button outside the expander
+                            st.success("Presentation created successfully!")
+                            st.download_button(
+                                label="Download Presentation PDF",
+                                data=presentation_bytes,
+                                file_name=f"{blog_topic.replace(' ', '_')}_presentation.pdf",
+                                mime="application/pdf"
+                            )
+                        except Exception as e:
+                            progress_placeholder.error(f"Error in PDF creation: {str(e)}")
+                            st.error(f"Could not create presentation PDF: {str(e)}")
 
                     # Add a preview note
-                    with st.expander("About this presentation", expanded=True):
+                    with st.expander("About this presentation", expanded=False):
                         st.info("The presentation includes:\n"
                                 "- A title slide\n"
                                 "- 5-7 content slides with key points from each section\n"
@@ -363,7 +408,6 @@ def main():
 
                 except Exception as e:
                     st.error(f"Error creating presentation: {str(e)}")
-                    st.info("Please install ReportLab with 'pip install reportlab' to enable presentation generation")
 
     # Tab 3: Database Management
     with tab3:
@@ -382,7 +426,7 @@ def main():
 
             # Display all collections
             if collection_names:
-                st.write(f"All Collections: {', '.join(collection_names)}")
+                st.write(f"All Collections: {', '.join([c.name for c in collection_names])}")
 
                 # Get current collection count
                 current_collection = st.session_state.blog_creator.collection
@@ -431,14 +475,14 @@ def main():
                         collection_names = st.session_state.blog_creator.chroma_client.list_collections()
                         deleted_count = 0
 
-                        for collection_name in collection_names:
+                        for collection in collection_names:
                             try:
                                 # Add logging to debug
-                                st.write(f"Attempting to delete collection: {collection_name}")
-                                st.session_state.blog_creator.chroma_client.delete_collection(name=collection_name)
+                                st.write(f"Attempting to delete collection: {collection.name}")
+                                st.session_state.blog_creator.chroma_client.delete_collection(name=collection.name)
                                 deleted_count += 1
                             except Exception as e:
-                                st.error(f"Failed to delete collection {collection_name}: {str(e)}")
+                                st.error(f"Failed to delete collection {collection.name}: {str(e)}")
 
                         # Create a new collection
                         import time
@@ -449,8 +493,6 @@ def main():
                         )
 
                         # Force refresh the collection list
-                        st.session_state.blog_creator.chroma_client.reset()
-
                         st.success(
                             f"Deleted {deleted_count} collections. Created new collection '{new_collection_name}'")
 
@@ -458,6 +500,7 @@ def main():
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error deleting all collections: {str(e)}")
+
 
 if __name__ == "__main__":
     main()

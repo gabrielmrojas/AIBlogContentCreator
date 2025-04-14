@@ -9,6 +9,7 @@ __pycache__/
 venv/
 env/
 chroma_db/
+chroma_db_ollama/
 
 # IDEs
 .idea/
