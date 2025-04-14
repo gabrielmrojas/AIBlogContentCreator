@@ -11,3 +11,4 @@ openai==1.73.0
 python-dotenv==1.1.0
 streamlit==1.44.1
 PyMuPDF==1.24.5
+pysqlite3-binary>=0.5.0
