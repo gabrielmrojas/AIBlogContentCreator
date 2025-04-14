@@ -5,6 +5,10 @@
 
 ### Two versions of the app are available: one using OpenAI's API and another using Ollama's local model. This README provides instructions for setting up and using the OpenAI version. The changes required to switch to the Ollama version are minimal and will be noted in the relevant sections.
 
+##  Online Demo 
+
+You can try out the application online at [AI Blog Content Creator Demo](https://aiblogcontentcreator.streamlit.app/).
+
 ## 🚀 Features
 
 - **Blog Generation**: Create engaging and well-structured blog posts by providing a topic and word count.

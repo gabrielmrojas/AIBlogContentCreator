@@ -283,7 +283,7 @@ def create_simple_pdf(title, content):
     return pdf.output()
 
 def main():
-    st.title("AI Blog Creator")
+    st.title("AI Blog Content Creator")
 
     # Check for API key
     api_key = os.getenv("OPENAI_API_KEY", "")
@@ -306,12 +306,11 @@ def main():
             return
 
     # Create tabs
-    tab1, tab2 = st.tabs(["Generate Blog", "Generated Content"])
+    tab1, tab2 = st.tabs(["Generate Content Blog", "Generated Content"])
 
     # Tab 1: Blog Generation
-    # Tab 1: Blog Generation
     with tab1:
-        st.header("Generate Blog")
+        st.header("Generate Content Blog")
 
         # Input section for blog generation
         col1, col2 = st.columns([2, 1])
