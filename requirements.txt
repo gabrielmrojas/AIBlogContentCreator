@@ -1,5 +1,4 @@
 chromadb==0.6.3
-fitz==0.0.1.dev2
 fpdf2>=2.7.8
 langchain==0.3.23
 langchain_chroma==0.2.2
@@ -11,4 +10,4 @@ ollama==0.4.7
 openai==1.73.0
 python-dotenv==1.1.0
 streamlit==1.44.1
-pymupdf==1.24.5
+PyMuPDF==1.24.5
